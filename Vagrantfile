@@ -55,6 +55,7 @@ Vagrant.configure("2") do |config|
   #   # Customize the amount of memory on the VM:
     vb.memory = "1024"
   end
+  
   #
   # View the documentation for the provider you are using for more
   # information on available options.
@@ -70,9 +71,9 @@ Vagrant.configure("2") do |config|
   config.vm.define "server1" do |server1|
     server1.vm.hostname = "server1"
     server1.vm.network "private_network", ip: "172.20.20.10"
-
+    server1.vm.provision :hosts, :sync_hosts => true
     server1.vm.provision "yum", type: "shell",
-      inline: "sudo yum install git -y
+      inline: "yum install git -y
                git clone https://github.com/Suntorialux/DevOps_Training.git
                cd DevOps_Training
                git checkout task1
@@ -82,6 +83,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "server2" do |server2|
     server2.vm.hostname = "server2"
     server2.vm.network "private_network", ip: "172.20.20.11"
+    server2.vm.provision :hosts, :sync_hosts => true
   end
   
 end
