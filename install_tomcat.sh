@@ -12,4 +12,6 @@ echo "*             Installing Tomcat"
 echo "***************************************************************"
 
 yum -y install tomcat tomcat-webapps tomcat-admin-webapps
+systemctl enable tomcat
 systemctl start tomcat
+firewall-cmd --zone=public --add-port=8009/tcp --permanent

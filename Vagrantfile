@@ -2,51 +2,14 @@
 # vi: set ft=ruby :
 VAGRANTFILE_API_VERSION = "2"
 COUNT_SERVERS = 3
-
-$install_httpd = <<SCRIPT
-  echo "***********************************************************"
-  echo "*             Installing Apache HTTP Server"
-  echo "***********************************************************"
-
-  yum -y install httpd
-  
-  systemctl start httpd
-  
-  cp /vagrant/mod_jk.so /etc/httpd/modules/
-  
-  echo "worker.list=lb" > /etc/httpd/conf/workers.properties
-  echo "worker.lb.type=lb" >> /etc/httpd/conf/workers.properties
-  
-  for ((c=0 ; c<#{COUNT_SERVERS}-1; c++))
-  do 
-    ind=`expr $c + 1`
-    array[$c]="worker${ind}"
-  done
-  
-  param=$(IFS=, ; echo "${array[*]}")
-  
-  echo "worker.lb.balance_workers=${param}" >> /etc/httpd/conf/workers.properties
-  
-  for ((c=0 ; c<#{COUNT_SERVERS}-1; c++))
-  do 
-    ind=`expr $c + 1`
-    echo "worker.worker${ind}.host=server${ind}" >> /etc/httpd/conf/workers.properties
-    echo "worker.worker${ind}.port=8009" >> /etc/httpd/conf/workers.properties
-    echo "worker.worker${ind}.type=ajp13" >> /etc/httpd/conf/workers.properties
-  done
-  
-  echo "LoadModule jk_module modules/mod_jk.so" >> /etc/httpd/conf/httpd.conf 
-  echo "JkWorkersFile conf/workers.properties" >> /etc/httpd/conf/httpd.conf 
-  echo "JkShmFile /tmp/shm" >> /etc/httpd/conf/httpd.conf 
-  echo "JkLogFile logs/mod_jk.log" >> /etc/httpd/conf/httpd.conf 
-  echo "JkLogLevel info" >> /etc/httpd/conf/httpd.conf 
-  echo "JkMount /test* lb" >> /etc/httpd/conf/httpd.conf 
-  
-  systemctl restart httpd
-  
-  
-SCRIPT
-
+MOD_CONFIG = "LoadModule jk_module modules/mod_jk.so\n 
+              JkWorkersFile conf/workers.properties\n 
+              JkShmFile /tmp/shm\n
+              JkLogFile logs/mod_jk.log\n
+              JkLogLevel info\n
+              JkMount /test* lb"
+balance_worker = Array.new()
+workers_properties = Array.new()
 # All Vagrant configuration is done below. The "2" in Vagrant.configure
 # configures the configuration version (we support older styles for
 # backwards compatibility). Please don't change it unless you know what
@@ -127,20 +90,23 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       server.vm.provision :hosts, :sync_hosts => true
 
       if i == COUNT_SERVERS
+        workers = "worker.list=lb"+"\n"+"worker.lb.type=lb"+"\n"+"worker.lb.balance_workers="+balance_worker.join(",")+"\n"+workers_properties.join("\n")
         server.vm.network "forwarded_port", guest: 80, host: "1808#{i}"
-        server.vm.provision "shell", inline: $install_httpd
-      else
-        server.vm.provision :shell, :path => "install_env.sh"
+        server.vm.provision :shell, :path => "install_httpd.sh"
         server.vm.provision "shell", 
-          inline: " mkdir /usr/share/tomcat/webapps/test#{i}
-                    echo \"SERVER_#{i}\" > /usr/share/tomcat/webapps/test#{i}/index.html"
+          inline: "echo \"#{workers}\" > /etc/httpd/conf/workers.properties
+                   echo \"#{MOD_CONFIG}\" >> /etc/httpd/conf/httpd.conf
+                   systemctl restart httpd"
+      else
+        balance_worker.push("worker#{i}")
+        workers_properties.push("worker.worker#{i}.host=server#{i}"+"\n"+"worker.worker#{i}.port=8009"+"\n"+"worker.worker#{i}.type=ajp13")
+        server.vm.provision :shell, :path => "install_tomcat.sh"
+        server.vm.provision "shell", 
+          inline: " mkdir /usr/share/tomcat/webapps/test1
+                    echo \"SERVER_#{i}\" > /usr/share/tomcat/webapps/test1/index.html"
+
       end
-      server.vm.provision "shell", inline: "systemctl stop firewalld"
-#        inline: "firewall-cmd --zone=public --add-port=1808#{i}/tcp --permanent
-#                 firewall-cmd --zone=public --add-port=80/tcp --permanent
-#                 firewall-cmd --zone=public --add-port=8080/tcp --permanent
-#                 firewall-cmd --zone=public --add-port=8009/tcp --permanent
-#                 firewall-cmd --reload"
+      server.vm.provision "shell", inline: "firewall-cmd --reload"
     end
   end
 end
